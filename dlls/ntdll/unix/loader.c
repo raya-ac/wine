@@ -155,6 +155,15 @@ static BYTE syscall_args[ARRAY_SIZE(syscalls)] =
 #undef SYSCALL_ENTRY
 };
 
+#if defined(__APPLE__) && defined(__aarch64__)
+const BYTE __wine_syscall_arg_types[ARRAY_SIZE(syscalls)] =
+{
+#define SYSCALL_ENTRY(id,name,args) SYSCALL_ARG_TYPES_##name,
+    ALL_SYSCALLS
+#undef SYSCALL_ENTRY
+};
+#endif
+
 SYSTEM_SERVICE_TABLE KeServiceDescriptorTable[4] =
 {
     { (ULONG_PTR *)syscalls, NULL, ARRAY_SIZE(syscalls), syscall_args }

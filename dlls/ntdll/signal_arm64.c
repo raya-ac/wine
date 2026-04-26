@@ -40,6 +40,31 @@
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
 WINE_DECLARE_DEBUG_CHANNEL(relay);
 
+#ifdef __WINE_DARWIN_ARM64_TEB
+# define TEB_REG "x20"
+#else
+# define TEB_REG "x18"
+#endif
+
+#ifdef __WINE_DARWIN_ARM64_TEB
+NTSYSAPI TEB * WINAPI NtCurrentTeb(void);
+__ASM_GLOBAL_FUNC( NtCurrentTeb,
+                   "mov x0, " TEB_REG "\n\t"
+                   "ret" )
+
+NTSTATUS __attribute__((naked)) __wine_unix_call_darwin_arm64( UINT64 handle, unsigned int code, void *args )
+{
+    asm( ".seh_proc __wine_unix_call_darwin_arm64\n\t"
+         ".seh_endprologue\n\t"
+         "mov x17, " TEB_REG "\n\t"
+         "ldr x16, 1f\n\t"
+         "ldr x16, [x16]\n\t"
+         "br x16\n"
+         "1:\t.quad __wine_unix_call_dispatcher\n\t"
+         ".seh_endproc" );
+}
+#endif
+
 
 /*******************************************************************
  *         syscalls
@@ -375,7 +400,7 @@ __ASM_GLOBAL_FUNC( KiUserCallbackDispatcher,
                    ".seh_handler user_callback_handler, @except\n\t"
                    "ldr x0, [sp]\n\t"             /* args */
                    "ldp w1, w2, [sp, #0x08]\n\t"  /* len, id */
-                   "ldr x3, [x18, 0x60]\n\t"      /* peb */
+                   "ldr x3, [" TEB_REG ", #0x60]\n\t" /* peb */
                    "ldr x3, [x3, 0x58]\n\t"       /* peb->KernelCallbackTable */
                    "ldr x15, [x3, x2, lsl #3]\n\t"
                    "blr x15\n\t"
@@ -855,7 +880,7 @@ __ASM_GLOBAL_FUNC( RtlRaiseException,
                    "ldr w2, [x1]\n\t"            /* context->ContextFlags */
                    "orr w2, w2, #0x20000000\n\t" /* CONTEXT_UNWOUND_TO_CALL */
                    "str w2, [x1]\n\t"
-                   "ldr x3, [x18, #0x60]\n\t"    /* peb */
+                   "ldr x3, [" TEB_REG ", #0x60]\n\t" /* peb */
                    "ldrb w2, [x3, #2]\n\t"       /* peb->BeingDebugged */
                    "cbnz w2, 1f\n\t"
                    "bl dispatch_exception\n"
@@ -930,8 +955,10 @@ __ASM_GLOBAL_FUNC( RtlUserThreadStart,
  */
 void WINAPI LdrInitializeThunk( CONTEXT *context, ULONG_PTR unk2, ULONG_PTR unk3, ULONG_PTR unk4 )
 {
+#ifndef __WINE_DARWIN_ARM64_TEB
     /* The Darwin ARM64 probe can lose x18 while entering the first PE frame. */
     __asm__ __volatile__( "mov x18, %0" :: "r" (context->X18) : "x18" );
+#endif
 
     if (NtCurrentTeb()->WowTebOffset && InterlockedCompareExchange( &apc_worker_started, 1, 0 ) == 0)
     {
@@ -971,7 +998,7 @@ __ASM_GLOBAL_FUNC( DbgUiRemoteBreakin,
                    ".seh_save_fplr_x 16\n\t"
                    ".seh_endprologue\n\t"
                    ".seh_handler DbgUiRemoteBreakin_handler, @except\n\t"
-                   "ldr x0, [x18, #0x60]\n\t"       /* NtCurrentTeb()->Peb */
+                   "ldr x0, [" TEB_REG ", #0x60]\n\t" /* NtCurrentTeb()->Peb */
                    "ldrb w0, [x0, 0x02]\n\t"        /* peb->BeingDebugged */
                    "cbz w0, 1f\n\t"
                    "bl DbgBreakPoint\n"

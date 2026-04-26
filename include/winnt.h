@@ -2519,6 +2519,8 @@ static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 {
     return (struct _TEB *)__readfsdword( 0x18 );
 }
+#elif defined(__WINE_DARWIN_ARM64_TEB) && defined(__aarch64__)
+NTSYSAPI struct _TEB * WINAPI NtCurrentTeb(void);
 #elif (defined(__aarch64__) || defined(__arm64ec__)) && defined(__GNUC__)
 register struct _TEB *__wine_current_teb __asm__("x18");
 static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)

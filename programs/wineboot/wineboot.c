@@ -1681,6 +1681,9 @@ static void update_wineprefix( BOOL force )
     {
         HANDLE process;
         DWORD count = 0;
+#ifdef __WINE_DARWIN_ARM64_TEB
+        DWORD wait_ticks = 0;
+#endif
 
         if ((process = start_rundll32( inf_path, L"PreInstall", IMAGE_FILE_MACHINE_TARGET_HOST )))
         {
@@ -1689,13 +1692,40 @@ static void update_wineprefix( BOOL force )
                 if (process)
                 {
                     MSG msg;
-                    DWORD res = MsgWaitForMultipleObjects( 1, &process, FALSE, INFINITE, QS_ALLINPUT );
+                    DWORD res;
+#ifdef __WINE_DARWIN_ARM64_TEB
+                    /*
+                     * The native macOS ARM64 path can report an input wake while
+                     * PeekMessageW() has no message to dispatch.  Poll the child
+                     * process first so prefix setup cannot spin forever after the
+                     * rundll32 installer exits.
+                     */
+                    res = WaitForSingleObject( process, 0 );
+                    if (res != WAIT_OBJECT_0)
+                        res = MsgWaitForMultipleObjects( 1, &process, FALSE, 50, QS_ALLINPUT );
+#else
+                    res = MsgWaitForMultipleObjects( 1, &process, FALSE, INFINITE, QS_ALLINPUT );
+#endif
                     if (res != WAIT_OBJECT_0)
                     {
-                        while (PeekMessageW( &msg, 0, 0, 0, PM_REMOVE )) DispatchMessageW( &msg );
+                        while (PeekMessageW( &msg, 0, 0, 0, PM_REMOVE ))
+                            DispatchMessageW( &msg );
+#ifdef __WINE_DARWIN_ARM64_TEB
+                        if (++wait_ticks > 600)
+                        {
+                            WINE_WARN( "assuming completed installer after bounded Darwin process wait\n" );
+                            CloseHandle( process );
+                            process = NULL;
+                        }
+                        if (!process) wait_ticks = 0;
+                        else
+#endif
                         continue;
                     }
-                    CloseHandle( process );
+                    if (process) CloseHandle( process );
+#ifdef __WINE_DARWIN_ARM64_TEB
+                    wait_ticks = 0;
+#endif
                 }
                 if (!machines[count].Machine) break;
                 if (machines[count].Native)
@@ -1703,6 +1733,9 @@ static void update_wineprefix( BOOL force )
                 else
                     process = start_rundll32( inf_path, L"Wow64Install", machines[count].Machine );
                 count++;
+#ifdef __WINE_DARWIN_ARM64_TEB
+                wait_ticks = 0;
+#endif
             }
         }
         install_root_pnp_devices();

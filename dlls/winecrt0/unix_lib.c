@@ -58,11 +58,36 @@ static NTSTATUS WINAPI unix_call_init( unixlib_handle_t handle, unsigned int cod
 {
     InterlockedExchangePointer( (void **)&__wine_unix_call_dispatcher,
                                 get_dispatcher( "__wine_unix_call_dispatcher" ));
+#if defined(__WINE_DARWIN_ARM64_TEB) && defined(__aarch64__)
+    return __wine_unix_call_darwin_arm64( handle, code, args );
+#else
     return __wine_unix_call_dispatcher( handle, code, args );
+#endif
 }
 
 unixlib_handle_t __wine_unixlib_handle = 0;
 NTSTATUS (WINAPI *__wine_unix_call_dispatcher)( unixlib_handle_t, unsigned int, void * ) = unix_call_init;
+
+#if defined(__WINE_DARWIN_ARM64_TEB) && defined(__aarch64__)
+
+NTSTATUS __attribute__((naked)) __wine_unix_call_darwin_arm64( unixlib_handle_t handle, unsigned int code, void *args )
+{
+    asm( ".seh_proc __wine_unix_call_darwin_arm64\n\t"
+         ".seh_endprologue\n\t"
+         "stp x0, x1, [sp, #-0x20]!\n\t"
+         "stp x2, x30, [sp, #0x10]\n\t"
+         "bl NtCurrentTeb\n\t"
+         "mov x17, x0\n\t"
+         "ldp x2, x30, [sp, #0x10]\n\t"
+         "ldp x0, x1, [sp], #0x20\n\t"
+         "ldr x16, 1f\n\t"
+         "ldr x16, [x16]\n\t"
+         "br x16\n"
+         "1:\t.quad __wine_unix_call_dispatcher\n\t"
+         ".seh_endproc" );
+}
+
+#endif
 
 #ifdef __arm64ec__
 

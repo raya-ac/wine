@@ -335,6 +335,21 @@ sub get_args_size($)
     return ($ret32, $ret64);
 }
 
+sub get_darwin_arm64_arg_types($)
+{
+    my $args = shift;
+    my $ret = 0;
+    if ($args =~ /^\((.*)\)$/)
+    {
+        my @args = split /\s+/, $1;
+        for (my $i = 8; $i < scalar @args; $i++)
+        {
+            $ret |= 1 << ($i - 8) if $args[$i] ne "long";
+        }
+    }
+    return $ret;
+}
+
 sub get_syscalls_str($$@)
 {
     my $base = shift;
@@ -374,6 +389,19 @@ sub get_syscalls_str($$@)
     return $ret;
 }
 
+sub get_syscall_arg_types_str(@)
+{
+    my @syscalls = @_;
+    my $ret = "";
+
+    foreach my $syscall (sort { $a->[0] cmp $b->[0] } @syscalls)
+    {
+        my ($name, $args, $id, $arg_types) = @{$syscall};
+        $ret .= sprintf "#define SYSCALL_ARG_TYPES_%s 0x%x\n", $name, $arg_types;
+    }
+    return $ret;
+}
+
 sub read_syscalls($)
 {
     my $spec = shift;
@@ -389,6 +417,7 @@ sub read_syscalls($)
         my $descr = $funcs{$func};
         next unless $descr->{flags} =~ /-syscall/;
         my ($args32, $args64) = get_args_size( $funcs{$func}->{args} );
+        my $darwin_arm64_arg_types = get_darwin_arm64_arg_types( $funcs{$func}->{args} );
         my $id;
         if ($descr->{flags} =~ /-syscall=(0[Xx][0-9a-fA-F]+)/)
         {
@@ -399,7 +428,7 @@ sub read_syscalls($)
             $id = $1;
         }
         push @syscalls32, [ $func, $args32, $id ] unless $descr->{flags} =~ /-arch=win64/;
-        push @syscalls64, [ $func, $args64, $id ] unless $descr->{flags} =~ /-arch=win32/;
+        push @syscalls64, [ $func, $args64, $id, $darwin_arm64_arg_types ] unless $descr->{flags} =~ /-arch=win32/;
         push @stubs, $func if $descr->{callconv} eq "stub";
     }
     return (\@syscalls32, \@syscalls64, \@stubs);
@@ -424,6 +453,9 @@ sub update_syscalls($$$$)
                  "\n#else" .
                  "\n#define ALL_SYSCALLS ALL_SYSCALLS32" .
                  "\n#endif\n" .
+                 "#ifdef _WIN64\n" .
+                 get_syscall_arg_types_str( @{$syscalls64} ) .
+                 "#endif\n" .
                  join "", @defines );
 }
 

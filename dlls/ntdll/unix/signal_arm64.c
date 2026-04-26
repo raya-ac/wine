@@ -77,6 +77,60 @@ static inline struct arm64_thread_data *arm64_thread_data(void)
     return (struct arm64_thread_data *)ntdll_get_thread_data()->cpu_data;
 }
 
+#if defined(__APPLE__)
+# define TEB_REG "x20"
+# define TEB_REGNO 20
+# define SYSCALL_TEB_REG "x17"
+# define SYSCALL_TEB_REGNO 17
+# define TRACE_SAVE_TEB ""
+# define TRACE_RESTORE_TEB ""
+# define COPY_SYSCALL_STACK_ARGS \
+                   "ldrb w9, [x16, x20]\n\t" \
+                   "subs x9, x9, #64\n\t" \
+                   "bls 2f\n\t" \
+                   "sub sp, sp, x9\n\t" \
+                   "tbz x9, #3, 1f\n\t" \
+                   "sub sp, sp, #8\n" \
+                   "1:\tadrp x25, " __ASM_NAME("__wine_syscall_arg_types") "@GOTPAGE\n\t" \
+                   "ldr x25, [x25, " __ASM_NAME("__wine_syscall_arg_types") "@GOTPAGEOFF]\n\t" \
+                   "ldrb w27, [x25, x20]\n\t" \
+                   "lsr x26, x9, #3\n\t" \
+                   "mov x9, #0\n\t" \
+                   "mov x25, #0\n" \
+                   "3:\ttbz x27, #0, 4f\n\t" \
+                   "add x25, x25, #7\n\t" \
+                   "and x25, x25, #0xfffffffffffffff8\n\t" \
+                   "ldr x10, [x24, x9]\n\t" \
+                   "str x10, [sp, x25]\n\t" \
+                   "add x25, x25, #8\n\t" \
+                   "b 5f\n" \
+                   "4:\tldr w10, [x24, x9]\n\t" \
+                   "str w10, [sp, x25]\n\t" \
+                   "add x25, x25, #4\n" \
+                   "5:\tadd x9, x9, #8\n\t" \
+                   "lsr x27, x27, #1\n\t" \
+                   "subs x26, x26, #1\n\t" \
+                   "b.ne 3b\n"
+#else
+# define TEB_REG "x18"
+# define TEB_REGNO 18
+# define SYSCALL_TEB_REG "x18"
+# define SYSCALL_TEB_REGNO 18
+# define TRACE_SAVE_TEB "mov x19, x18\n\t"
+# define TRACE_RESTORE_TEB "mov x18, x19\n\t"
+# define COPY_SYSCALL_STACK_ARGS \
+                   "ldrb w9, [x16, x20]\n\t" \
+                   "subs x9, x9, #64\n\t" \
+                   "bls 2f\n\t" \
+                   "sub sp, sp, x9\n\t" \
+                   "tbz x9, #3, 1f\n\t" \
+                   "sub sp, sp, #8\n" \
+                   "1:\tsub x9, x9, #8\n\t" \
+                   "ldr x10, [x24, x9]\n\t" \
+                   "str x10, [sp, x9]\n\t" \
+                   "cbnz x9, 1b\n"
+#endif
+
 /***********************************************************************
  * signal context platform-specific definitions
  */
@@ -774,7 +828,7 @@ static void setup_raise_exception( ucontext_t *sigcontext, EXCEPTION_RECORD *rec
 
     SP_sig(sigcontext) = (ULONG_PTR)stack;
     PC_sig(sigcontext) = (ULONG_PTR)pKiUserExceptionDispatcher;
-    REGn_sig(18, sigcontext) = (ULONG_PTR)NtCurrentTeb();
+    REGn_sig(TEB_REGNO, sigcontext) = (ULONG_PTR)NtCurrentTeb();
 }
 
 
@@ -898,33 +952,33 @@ __ASM_GLOBAL_FUNC( call_user_mode_callback,
                    "stp d12, d13, [x29, #0x80]\n\t"
                    "stp d14, d15, [x29, #0x90]\n\t"
                    "stp x1, x2, [x29, #0xa0]\n\t" /* ret_ptr, ret_len */
-                   "mov x18, x4\n\t"              /* teb */
+                   "mov " TEB_REG ", x4\n\t"      /* teb */
                    "mrs x1, fpcr\n\t"
                    "mrs x2, fpsr\n\t"
                    "bfi x1, x2, #0, #32\n\t"
-                   "ldr x2, [x18]\n\t"            /* teb->Tib.ExceptionList */
+                   "ldr x2, [" TEB_REG "]\n\t"    /* teb->Tib.ExceptionList */
                    "stp x1, x2, [x29, #0xb0]\n\t"
 
-                   "ldr x7, [x18, #0x378]\n\t"    /* thread_data->syscall_frame */
+                   "ldr x7, [" TEB_REG ", #0x378]\n\t" /* thread_data->syscall_frame */
                    "sub x1, sp, #0x330\n\t"       /* sizeof(struct syscall_frame) */
-                   "str x1, [x18, #0x378]\n\t"    /* thread_data->syscall_frame */
+                   "str x1, [" TEB_REG ", #0x378]\n\t" /* thread_data->syscall_frame */
                    "add x8, x29, #0xd0\n\t"
                    "stp x7, x8, [x1, #0x110]\n\t" /* frame->prev_frame,syscall_cfa */
-                   "ldr w11, [x18, #0x380]\n\t"   /* thread_data->syscall_trace */
+                   "ldr w11, [" TEB_REG ", #0x380]\n\t" /* thread_data->syscall_trace */
                    "cbnz x11, 1f\n\t"
                    /* switch to user stack */
                    "mov sp, x0\n\t"               /* user_sp */
                    "br x3\n"
-                   "1:\tmov x19, x18\n\t"         /* teb */
-                   "mov x20, x0\n\t"              /* user_sp */
+                   "1:\t" TRACE_SAVE_TEB          /* teb */
+                   "mov x19, x0\n\t"              /* user_sp */
                    "mov x21, x3\n\t"              /* func */
                    "mov sp, x1\n\t"
-                   "ldr x1, [x20]\n\t"            /* args */
-                   "ldp w2, w0, [x20, #8]\n\t"    /* len, id */
+                   "ldr x1, [x19]\n\t"            /* args */
+                   "ldp w2, w0, [x19, #8]\n\t"    /* len, id */
                    "str x0, [x29, #0xc0]\n\t"     /* id */
                    "bl " __ASM_NAME("trace_usercall") "\n\t"
-                   "mov x18, x19\n\t"             /* teb */
-                   "mov sp, x20\n\t"              /* user_sp */
+                   TRACE_RESTORE_TEB              /* teb */
+                   "mov sp, x19\n\t"              /* user_sp */
                    "br x21" )
 
 
@@ -1107,7 +1161,7 @@ static BOOL handle_syscall_fault( ucontext_t *context, EXCEPTION_RECORD *rec )
     {
         TRACE( "returning to user mode ip=%p ret=%08x\n", (void *)frame->pc, rec->ExceptionCode );
         REGn_sig(0, context)  = rec->ExceptionCode;
-        REGn_sig(18, context) = (ULONG_PTR)NtCurrentTeb();
+        REGn_sig(SYSCALL_TEB_REGNO, context) = (ULONG_PTR)NtCurrentTeb();
         SP_sig(context)       = (ULONG_PTR)frame;
         PC_sig(context)       = (ULONG_PTR)__wine_syscall_dispatcher_return;
     }
@@ -1521,6 +1575,9 @@ void init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, BOOL suspend, 
     context.X0  = (DWORD64)entry;
     context.X1  = (DWORD64)arg;
     context.X18 = (DWORD64)teb;
+#ifdef __APPLE__
+    context.X20 = (DWORD64)teb;
+#endif
     context.Sp  = (DWORD64)teb->Tib.StackBase;
     context.Pc  = (DWORD64)pRtlUserThreadStart;
 
@@ -1568,6 +1625,9 @@ void init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, BOOL suspend, 
     frame->pc    = (ULONG64)pLdrInitializeThunk;
     frame->x[0]  = (ULONG64)ctx;
     frame->x[18] = (ULONG64)teb;
+#ifdef __APPLE__
+    frame->x[20] = (ULONG64)teb;
+#endif
     syscall_frame_fixup_for_fastpath( frame );
 
     pthread_sigmask( SIG_UNBLOCK, &server_block_set, NULL );
@@ -1618,15 +1678,15 @@ __ASM_GLOBAL_FUNC( signal_start_thread,
  */
 __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "hint 34\n\t" /* bti c */
-                   "ldr x10, [x18, #0x378]\n\t" /* thread_data->syscall_frame */
+                   "ldr x10, [" SYSCALL_TEB_REG ", #0x378]\n\t" /* thread_data->syscall_frame */
                    "stp x18, x19, [x10, #0x90]\n\t"
                    "stp x20, x21, [x10, #0xa0]\n\t"
                    "stp x22, x23, [x10, #0xb0]\n\t"
                    "stp x24, x25, [x10, #0xc0]\n\t"
                    "stp x26, x27, [x10, #0xd0]\n\t"
                    "stp x28, x29, [x10, #0xe0]\n\t"
-                   "mov x19, sp\n\t"
-                   "stp x9, x19, [x10, #0xf0]\n\t"
+                   "mov x24, sp\n\t"
+                   "stp x9, x24, [x10, #0xf0]\n\t"
                    "mrs x9, NZCV\n\t"
                    "stp x30, x9, [x10, #0x100]\n\t"
                    "str w8, [x10, #0x120]\n\t"
@@ -1669,25 +1729,16 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    __ASM_CFI(".cfi_offset 28, -0x68\n\t")
                    "and x20, x8, #0xfff\n\t"    /* syscall number */
                    "ubfx x21, x8, #12, #2\n\t"  /* syscall table number */
-                   "ldr x16, [x18, #0x370]\n\t" /* thread_data->syscall_table */
+                   "ldr x16, [" SYSCALL_TEB_REG ", #0x370]\n\t" /* thread_data->syscall_table */
                    "add x21, x16, x21, lsl #5\n\t"
                    "ldr x16, [x21, #16]\n\t"    /* table->ServiceLimit */
                    "cmp x20, x16\n\t"
                    "bcs " __ASM_LOCAL_LABEL("bad_syscall") "\n\t"
                    "ldr x16, [x21, #24]\n\t"    /* table->ArgumentTable */
-                   "ldrb w9, [x16, x20]\n\t"
-                   "subs x9, x9, #64\n\t"
-                   "bls 2f\n\t"
-                   "sub sp, sp, x9\n\t"
-                   "tbz x9, #3, 1f\n\t"
-                   "sub sp, sp, #8\n"
-                   "1:\tsub x9, x9, #8\n\t"
-                   "ldr x10, [x19, x9]\n\t"
-                   "str x10, [sp, x9]\n\t"
-                   "cbnz x9, 1b\n"
+                   COPY_SYSCALL_STACK_ARGS
                    "2:\tldr x16, [x21]\n\t"     /* table->ServiceTable */
                    "ldr x23, [x16, x20, lsl 3]\n\t"
-                   "ldr w11, [x18, #0x380]\n\t" /* thread_data->syscall_trace */
+                   "ldr w11, [" SYSCALL_TEB_REG ", #0x380]\n\t" /* thread_data->syscall_trace */
                    "cbnz x11, " __ASM_LOCAL_LABEL("trace_syscall") "\n\t"
                    "blr x23\n\t"
                    "mov sp, x22\n"
@@ -1774,7 +1825,7 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "b " __ASM_LOCAL_LABEL("__wine_syscall_dispatcher_return") )
 
 __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher_return,
-                   "ldr w11, [x18, #0x380]\n\t" /* thread_data->syscall_trace */
+                   "ldr w11, [" SYSCALL_TEB_REG ", #0x380]\n\t" /* thread_data->syscall_trace */
                    "cbnz x11, " __ASM_LOCAL_LABEL("trace_syscall_ret") "\n\t"
                    "b " __ASM_LOCAL_LABEL("__wine_syscall_dispatcher_return") )
 
@@ -1784,7 +1835,7 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher_return,
  */
 __ASM_GLOBAL_FUNC( __wine_unix_call_dispatcher,
                    "hint 34\n\t" /* bti c */
-                   "ldr x10, [x18, #0x378]\n\t" /* thread_data->syscall_frame */
+                   "ldr x10, [" SYSCALL_TEB_REG ", #0x378]\n\t" /* thread_data->syscall_frame */
                    "stp x18, x19, [x10, #0x90]\n\t"
                    "stp x20, x21, [x10, #0xa0]\n\t"
                    "stp x22, x23, [x10, #0xb0]\n\t"

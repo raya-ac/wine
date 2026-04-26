@@ -948,6 +948,7 @@ case $host_os in
       aarch64) WINELOADER_LDFLAGS="-Wl,-segalign,0x4000,-pagezero_size,0x100000000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
       *)       WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
     esac
+    test $HOST_ARCH != aarch64 || AS_VAR_APPEND([aarch64_EXTRACFLAGS],[" -D__WINE_DARWIN_ARM64_TEB -ffixed-x20"])
 
     case $HOST_ARCH in
       i386) wine_use_preloader=yes ;;

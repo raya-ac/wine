@@ -244,16 +244,37 @@
     __ASM_GLOBAL_FUNC( __wine_syscall, "jmp *(" __ASM_NAME("__wine_syscall_dispatcher") ")" )
 # endif
 #elif defined __aarch64__
+# ifdef __WINE_DARWIN_ARM64_TEB
+#  define __ASM_SYSCALL_TEB_LOAD \
+                       "stp x0, x1, [sp, #-0x50]!\n\t" \
+                       "stp x2, x3, [sp, #0x10]\n\t" \
+                       "stp x4, x5, [sp, #0x20]\n\t" \
+                       "stp x6, x7, [sp, #0x30]\n\t" \
+                       "stp x8, x9, [sp, #0x40]\n\t" \
+                       "bl " __ASM_NAME("NtCurrentTeb") "\n\t" \
+                       "mov x17, x0\n\t" \
+                       "ldp x8, x9, [sp, #0x40]\n\t" \
+                       "ldp x6, x7, [sp, #0x30]\n\t" \
+                       "ldp x4, x5, [sp, #0x20]\n\t" \
+                       "ldp x2, x3, [sp, #0x10]\n\t" \
+                       "ldp x0, x1, [sp], #0x50\n\t"
+#  define __ASM_SYSCALL_TEB_PTR
+# else
+#  define __ASM_SYSCALL_TEB_LOAD
+#  define __ASM_SYSCALL_TEB_PTR
+# endif
 # define __ASM_SYSCALL_FUNC(id,name) \
     __ASM_GLOBAL_FUNC( name, \
                        ".seh_endprologue\n\t" \
                        "mov x8, #(" #id ")\n\t" \
                        "mov x9, x30\n\t" \
+                       __ASM_SYSCALL_TEB_LOAD \
                        "ldr x16, 1f\n\t" \
                        "ldr x16, [x16]\n\t" \
                        "blr x16\n\t" \
                        "ret\n" \
-                       "1:\t.quad " __ASM_NAME("__wine_syscall_dispatcher") )
+                       "1:\t.quad " __ASM_NAME("__wine_syscall_dispatcher") "\n\t" \
+                       __ASM_SYSCALL_TEB_PTR )
 #elif defined __arm64ec__
 # define __ASM_SYSCALL_FUNC(id,name) \
     asm( ".seh_proc \"#" #name "$hp_target\"\n\t" \

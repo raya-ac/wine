@@ -281,6 +281,12 @@ static inline NTSTATUS __wine_unix_call( unixlib_handle_t handle, unsigned int c
 {
     return __wine_unix_call_arm64ec( handle, code, args );
 }
+#elif defined(__WINE_DARWIN_ARM64_TEB) && defined(__aarch64__)
+NTSTATUS __wine_unix_call_darwin_arm64( unixlib_handle_t handle, unsigned int code, void *args );
+static inline NTSTATUS __wine_unix_call( unixlib_handle_t handle, unsigned int code, void *args )
+{
+    return __wine_unix_call_darwin_arm64( handle, code, args );
+}
 #else
 static inline NTSTATUS __wine_unix_call( unixlib_handle_t handle, unsigned int code, void *args )
 {
