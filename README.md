@@ -1,3 +1,28 @@
+## DARWIN ARM64 PORT SPIKE
+
+This fork's default branch is `macos-arm-port-spike`. It is the Wine submodule
+branch used by `raya-ac/Proton` for the macOS/Apple Silicon Proton port spike,
+based on Proton Wine 11.
+
+Current status:
+
+- Native ARM64/Darwin builds produce Mach-O `wine`, `server/wineserver`, and
+  `dlls/ntdll/ntdll.so`.
+- The loader and wineserver version checks pass.
+- ARM64 PE TEB handling currently reserves `x20` for Wine-built PE code on
+  Darwin and uses `x17` for syscall/unix-call handoff.
+- Prefix setup reaches `wineboot`, `services.exe`, `rundll32 setupapi`, and
+  `explorer.exe`, but `cmd.exe /c ver` still does not complete.
+- Known blockers are `services.exe` RPC startup error 1721, no loadable GUI
+  driver at startup, and unreliable process-handle wait signaling on Darwin
+  ARM64.
+
+This is not upstream Wine release documentation and not a stable macOS runtime.
+See the parent Proton notes at
+<https://github.com/raya-ac/Proton/blob/macos-arm-port-spike/docs/MACOS-ARM64-PORT.md>.
+Upstream Wine documentation follows below.
+
+
 ## INTRODUCTION
 
 Wine is a program which allows running Microsoft Windows programs
