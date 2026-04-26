@@ -57,6 +57,74 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(fsync);
 
+#ifndef __linux__
+
+int fsync_enabled;
+
+void fsync_init( DWORD pid )
+{
+    fsync_enabled = 0;
+}
+
+NTSTATUS fsync_close( HANDLE handle )
+{
+    return STATUS_INVALID_HANDLE;
+}
+
+NTSTATUS fsync_release_semaphore( HANDLE handle, ULONG count, ULONG *prev )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_query_semaphore( HANDLE handle, void *info )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_set_event( HANDLE handle, LONG *prev )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_reset_event( HANDLE handle, LONG *prev )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_pulse_event( HANDLE handle, LONG *prev )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_query_event( HANDLE handle, void *info )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_release_mutex( HANDLE handle, LONG *prev )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_query_mutex( HANDLE handle, void *info )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_wait_objects( DWORD count, const HANDLE *handles,
+        BOOLEAN wait_any, BOOLEAN alertable, const LARGE_INTEGER *timeout )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS fsync_signal_and_wait( HANDLE signal, HANDLE wait, BOOLEAN alertable,
+        const LARGE_INTEGER *timeout )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+#else
+
 #include "pshpack4.h"
 #include "poppack.h"
 
@@ -1236,3 +1304,5 @@ NTSTATUS fsync_signal_and_wait( HANDLE signal, HANDLE wait, BOOLEAN alertable,
 
     return fsync_wait_objects( 1, &wait, TRUE, alertable, timeout );
 }
+
+#endif /* __linux__ */

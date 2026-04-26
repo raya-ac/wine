@@ -54,6 +54,54 @@
 
 int do_fsync_cached = -1;
 
+#ifndef __linux__
+
+int fsync_check_support(void)
+{
+    return 0;
+}
+
+void fsync_init(void)
+{
+}
+
+unsigned int fsync_alloc_shm( int low, int high )
+{
+    return 0;
+}
+
+void fsync_free_shm_idx( int shm_idx )
+{
+}
+
+void fsync_cleanup_process_shm_indices( process_id_t id )
+{
+}
+
+int fsync_grab_shm_idx( unsigned int shm_idx )
+{
+    return 0;
+}
+
+void fsync_set_event( unsigned int shm_idx )
+{
+}
+
+void fsync_reset_event( unsigned int shm_idx )
+{
+}
+
+void fsync_abandon_mutex( unsigned int shm_idx, thread_id_t tid )
+{
+}
+
+DECL_HANDLER(fsync_free_shm_idx)
+{
+    set_error( STATUS_NOT_IMPLEMENTED );
+}
+
+#else
+
 int fsync_check_support(void)
 {
 #ifdef __linux__
@@ -366,3 +414,5 @@ DECL_HANDLER(fsync_free_shm_idx)
     }
     fsync_free_shm_idx( req->shm_idx );
 }
+
+#endif /* __linux__ */

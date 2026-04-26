@@ -765,8 +765,19 @@ void init_shared_data_cpuinfo( KUSER_SHARED_DATA *data )
 
 #endif /* End architecture specific feature detection for CPUs */
 
+#ifdef linux
 static void fill_performance_core_info(void);
 static BOOL sysfs_parse_bitmap(const char *filename, ULONG_PTR *mask);
+#else
+static void fill_performance_core_info(void)
+{
+}
+
+static BOOL sysfs_parse_bitmap(const char *filename, ULONG_PTR *mask)
+{
+    return FALSE;
+}
+#endif
 
 void fill_cpu_override(void)
 {

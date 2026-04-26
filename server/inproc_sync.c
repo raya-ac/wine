@@ -36,7 +36,9 @@
 
 #include "fsync.h"
 
-#include "ntsync_tmp.h"
+#ifdef __linux__
+# include "ntsync_tmp.h"
+#endif
 
 #ifdef NTSYNC_IOC_EVENT_READ
 
