@@ -330,7 +330,11 @@ static const ptrdiff_t max_try_map_step = 0x40000000;
 static BOOL increase_try_map_step = TRUE;
 
 ULONG_PTR user_space_wow_limit = 0;
+#if defined(__APPLE__) && defined(__aarch64__)
+struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x120000000;
+#else
 struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x7ffe0000;
+#endif
 
 /* TEB allocation blocks */
 static void *teb_block;
@@ -4305,8 +4309,13 @@ TEB *virtual_alloc_first_teb(void)
         exit(1);
     }
 
+#if defined(__APPLE__) && defined(__aarch64__)
+    NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, 0, &total,
+                             MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
+#else
     NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, is_win64 ? limit_2g - 1 : 0, &total,
                              MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
+#endif
     teb_block_pos = 30;
     ptr = (char *)teb_block + 30 * block_size;
     data_size = 2 * block_size;
@@ -4696,6 +4705,9 @@ NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, UL
 
     size = max( reserve_size, commit_size );
     if (size < 1024 * 1024) size = 1024 * 1024;  /* Xlib needs a large stack */
+#if defined(__APPLE__) && defined(__aarch64__)
+    if (guard_page && size < 8 * 1024 * 1024) size = 8 * 1024 * 1024;
+#endif
     size = ROUND_SIZE( 0, size, granularity_mask );
 
     server_enter_uninterrupted_section( &virtual_mutex, &sigset );

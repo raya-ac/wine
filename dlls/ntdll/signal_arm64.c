@@ -930,6 +930,9 @@ __ASM_GLOBAL_FUNC( RtlUserThreadStart,
  */
 void WINAPI LdrInitializeThunk( CONTEXT *context, ULONG_PTR unk2, ULONG_PTR unk3, ULONG_PTR unk4 )
 {
+    /* The Darwin ARM64 probe can lose x18 while entering the first PE frame. */
+    __asm__ __volatile__( "mov x18, %0" :: "r" (context->X18) : "x18" );
+
     if (NtCurrentTeb()->WowTebOffset && InterlockedCompareExchange( &apc_worker_started, 1, 0 ) == 0)
     {
         HANDLE handle;

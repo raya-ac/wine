@@ -944,7 +944,10 @@ case $host_os in
     AC_SUBST(SECURITY_LIBS,"-framework Security -framework CoreFoundation")
     AC_SUBST(SYSTEMCONFIGURATION_LIBS,"-framework SystemConfiguration")
 
-    WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist"
+    case $HOST_ARCH in
+      aarch64) WINELOADER_LDFLAGS="-Wl,-segalign,0x4000,-pagezero_size,0x100000000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+      *)       WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+    esac
 
     case $HOST_ARCH in
       i386) wine_use_preloader=yes ;;
